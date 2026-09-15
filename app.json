@@ -17,7 +17,12 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "POST_NOTIFICATIONS"
+      ]
     },
     "web": {
       "output": "static",
@@ -41,7 +46,19 @@
           "microphonePermission": false
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Приложению нужно ваше местоположение, чтобы показывать его на карте и предупреждать о метках рядом."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#5B45E0"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

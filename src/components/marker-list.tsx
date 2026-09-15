@@ -3,16 +3,25 @@ import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import type { MarkerSummary } from '@/types';
-import { formatCoordinate } from '@/utils/format';
+import { calculateDistance } from '@/services/location';
+import type { Coordinate, MarkerSummary } from '@/types';
+import { formatCoordinate, formatDistance } from '@/utils/format';
 
 type MarkerListProps = {
   markers: MarkerSummary[];
   onSelect: (marker: MarkerSummary) => void;
   onDelete: (marker: MarkerSummary) => void;
+  userLocation?: Coordinate | null;
+  nearbyMarkerIds?: number[];
 };
 
-export function MarkerList({ markers, onSelect, onDelete }: MarkerListProps) {
+export function MarkerList({
+  markers,
+  onSelect,
+  onDelete,
+  userLocation,
+  nearbyMarkerIds = [],
+}: MarkerListProps) {
   const theme = useTheme();
 
   if (markers.length === 0) {
@@ -32,7 +41,18 @@ export function MarkerList({ markers, onSelect, onDelete }: MarkerListProps) {
       keyExtractor={(marker) => String(marker.id)}
       contentContainerStyle={styles.list}
       showsVerticalScrollIndicator={false}
-      renderItem={({ item }) => (
+      renderItem={({ item }) => {
+        const distance = userLocation
+          ? calculateDistance(
+              userLocation.latitude,
+              userLocation.longitude,
+              item.latitude,
+              item.longitude,
+            )
+          : null;
+        const isNearby = nearbyMarkerIds.includes(item.id);
+
+        return (
         <Pressable
           accessibilityRole="button"
           onPress={() => onSelect(item)}
@@ -50,8 +70,15 @@ export function MarkerList({ markers, onSelect, onDelete }: MarkerListProps) {
             <ThemedText type="smallBold">{formatCoordinate(item.latitude, item.longitude)}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               {item.imageCount} фото
+              {distance !== null ? ` · ${formatDistance(distance)}` : ''}
             </ThemedText>
           </View>
+
+          {isNearby && (
+            <ThemedText type="small" style={{ color: theme.accent }}>
+              рядом
+            </ThemedText>
+          )}
 
           <Pressable
             accessibilityRole="button"
@@ -63,7 +90,8 @@ export function MarkerList({ markers, onSelect, onDelete }: MarkerListProps) {
             </ThemedText>
           </Pressable>
         </Pressable>
-      )}
+        );
+      }}
     />
   );
 }

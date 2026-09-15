@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useCallback } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActionButton } from '@/components/action-button';
@@ -10,6 +10,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Radius, Spacing } from '@/constants/theme';
 import { useDatabase } from '@/contexts/database-context';
+import { useLocationTracking } from '@/hooks/use-location-tracking';
+import { useProximityNotifications } from '@/hooks/use-proximity-notifications';
 import { useTheme } from '@/hooks/use-theme';
 import type { Coordinate, Marker } from '@/types';
 import { formatCount } from '@/utils/format';
@@ -21,6 +23,17 @@ export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { markers, addMarker, deleteMarker, isLoading, error, retry } = useDatabase();
+  const {
+    location,
+    errorMsg: locationError,
+    isTracking,
+    retry: retryLocation,
+  } = useLocationTracking();
+  const { nearbyMarkerIds, errorMsg: notificationsError } = useProximityNotifications(
+    markers,
+    location,
+  );
+  const warning = locationError ?? notificationsError;
 
   const handleAddMarker = useCallback(
     async ({ latitude, longitude }: Coordinate) => {
@@ -91,6 +104,8 @@ export default function MapScreen() {
         markers={markers}
         onAddMarker={handleAddMarker}
         onSelectMarker={handleSelectMarker}
+        showUserLocation={isTracking}
+        nearbyMarkerIds={nearbyMarkerIds}
       />
 
       <ThemedView
@@ -107,7 +122,28 @@ export default function MapScreen() {
           </ThemedText>
         </View>
 
-        <MarkerList markers={markers} onSelect={handleSelectMarker} onDelete={handleDeleteMarker} />
+        {warning && (
+          <View style={[styles.warning, { backgroundColor: theme.backgroundElement }]}>
+            <ThemedText type="small" style={styles.warningText}>
+              {warning}
+            </ThemedText>
+            {locationError && (
+              <Pressable accessibilityRole="button" onPress={retryLocation} hitSlop={Spacing.two}>
+                <ThemedText type="smallBold" style={{ color: theme.accent }}>
+                  Повторить
+                </ThemedText>
+              </Pressable>
+            )}
+          </View>
+        )}
+
+        <MarkerList
+          markers={markers}
+          onSelect={handleSelectMarker}
+          onDelete={handleDeleteMarker}
+          userLocation={location?.coords ?? null}
+          nearbyMarkerIds={nearbyMarkerIds}
+        />
       </ThemedView>
     </ThemedView>
   );
@@ -138,5 +174,15 @@ const styles = StyleSheet.create({
   },
   panelHeader: {
     gap: Spacing.half,
+  },
+  warning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    padding: Spacing.two,
+    borderRadius: Radius.small,
+  },
+  warningText: {
+    flex: 1,
   },
 });

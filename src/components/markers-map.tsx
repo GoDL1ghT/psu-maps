@@ -1,22 +1,35 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import MapView, { Marker as MarkerPin, type LongPressEvent } from 'react-native-maps';
+import MapView, { Circle, Marker as MarkerPin, type LongPressEvent } from 'react-native-maps';
 
 import { ActionButton } from '@/components/action-button';
 import { ThemedText } from '@/components/themed-text';
 import { Colors, InitialRegion, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { PROXIMITY_THRESHOLD } from '@/services/notifications';
 import type { Coordinate, Marker } from '@/types';
 
 const MAP_LOAD_TIMEOUT = 12_000;
+const PROXIMITY_STROKE = 'rgba(91, 69, 224, 0.35)';
+const PROXIMITY_FILL = 'rgba(91, 69, 224, 0.08)';
+const PROXIMITY_STROKE_ACTIVE = 'rgba(91, 69, 224, 0.9)';
+const PROXIMITY_FILL_ACTIVE = 'rgba(91, 69, 224, 0.22)';
 
 type MarkersMapProps = {
   markers: Marker[];
   onAddMarker: (coordinate: Coordinate) => void;
   onSelectMarker: (marker: Marker) => void;
+  showUserLocation?: boolean;
+  nearbyMarkerIds?: number[];
 };
 
-export function MarkersMap({ markers, onAddMarker, onSelectMarker }: MarkersMapProps) {
+export function MarkersMap({
+  markers,
+  onAddMarker,
+  onSelectMarker,
+  showUserLocation = false,
+  nearbyMarkerIds = [],
+}: MarkersMapProps) {
   const theme = useTheme();
   const [attempt, setAttempt] = useState(0);
   const [isReady, setIsReady] = useState(false);
@@ -62,19 +75,35 @@ export function MarkersMap({ markers, onAddMarker, onSelectMarker }: MarkersMapP
         onLongPress={handleLongPress}
         onMapReady={() => setIsReady(true)}
         onMapLoaded={() => setIsReady(true)}
+        showsUserLocation={showUserLocation}
+        showsMyLocationButton={showUserLocation}
         toolbarEnabled={false}>
-        {markers.map((marker) => (
-          <MarkerPin
-            key={marker.id}
-            identifier={String(marker.id)}
-            coordinate={{ latitude: marker.latitude, longitude: marker.longitude }}
-            pinColor={Colors.light.accent}
-            title={`Метка №${marker.id}`}
-            description="Нажмите, чтобы открыть"
-            onCalloutPress={() => onSelectMarker(marker)}
-            onPress={() => onSelectMarker(marker)}
-          />
-        ))}
+        {markers.map((marker) => {
+          const coordinate = { latitude: marker.latitude, longitude: marker.longitude };
+          const isNearby = nearbyMarkerIds.includes(marker.id);
+
+          return (
+            <Fragment key={marker.id}>
+              {showUserLocation && (
+                <Circle
+                  center={coordinate}
+                  radius={PROXIMITY_THRESHOLD}
+                  strokeColor={isNearby ? PROXIMITY_STROKE_ACTIVE : PROXIMITY_STROKE}
+                  fillColor={isNearby ? PROXIMITY_FILL_ACTIVE : PROXIMITY_FILL}
+                />
+              )}
+              <MarkerPin
+                identifier={String(marker.id)}
+                coordinate={coordinate}
+                pinColor={Colors.light.accent}
+                title={`Метка №${marker.id}`}
+                description={isNearby ? 'Вы рядом' : 'Нажмите, чтобы открыть'}
+                onCalloutPress={() => onSelectMarker(marker)}
+                onPress={() => onSelectMarker(marker)}
+              />
+            </Fragment>
+          );
+        })}
       </MapView>
 
       {!isReady && (
