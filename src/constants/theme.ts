@@ -9,18 +9,26 @@ import { Platform } from 'react-native';
 
 export const Colors = {
   light: {
-    text: '#000000',
+    text: '#0E1420',
     background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    backgroundElement: '#F2F3F7',
+    backgroundSelected: '#E4E5EC',
+    textSecondary: '#5A6272',
+    border: '#E1E3EB',
+    accent: '#5B45E0',
+    accentText: '#ffffff',
+    danger: '#C42B3F',
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: '#F5F6FA',
+    background: '#0B0F18',
+    backgroundElement: '#171C27',
+    backgroundSelected: '#222835',
+    textSecondary: '#9AA3B4',
+    border: '#252B38',
+    accent: '#9E8CFF',
+    accentText: '#11132A',
+    danger: '#FF7A8A',
   },
 } as const;
 
@@ -61,5 +69,19 @@ export const Spacing = {
   six: 64,
 } as const;
 
+export const Radius = {
+  small: 8,
+  medium: 14,
+  large: 22,
+} as const;
+
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;
+
+/** Пермский государственный университет, корпус 1 */
+export const InitialRegion = {
+  latitude: 58.0084,
+  longitude: 56.1872,
+  latitudeDelta: 0.012,
+  longitudeDelta: 0.012,
+} as const;

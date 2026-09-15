@@ -1,62 +1,97 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { useCallback } from 'react';
+import { Alert, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
+import { MarkerList } from '@/components/marker-list';
+import { MarkersMap } from '@/components/markers-map';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
+import { useMarkers } from '@/contexts/markers-context';
+import { useTheme } from '@/hooks/use-theme';
+import type { Coordinate, Marker } from '@/types';
+import { formatCount } from '@/utils/format';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
+export { RouteErrorBoundary as ErrorBoundary } from '@/components/route-error-boundary';
+
+export default function MapScreen() {
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { markers, addMarker, deleteMarker, getMarkerImages } = useMarkers();
+
+  const handleAddMarker = useCallback(
+    async ({ latitude, longitude }: Coordinate) => {
+      try {
+        await addMarker(latitude, longitude);
+      } catch (error) {
+        Alert.alert('Метка не добавлена', (error as Error).message);
+      }
+    },
+    [addMarker],
   );
-}
 
-export default function HomeScreen() {
+  const handleSelectMarker = useCallback(
+    (marker: Marker) => {
+      try {
+        router.push({ pathname: '/marker/[id]', params: { id: String(marker.id) } });
+      } catch {
+        Alert.alert('Не удалось открыть метку', 'Попробуйте ещё раз.');
+      }
+    },
+    [router],
+  );
+
+  const handleDeleteMarker = useCallback(
+    (marker: Marker) => {
+      Alert.alert('Удалить метку?', 'Вместе с ней удалятся все её фотографии.', [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Удалить',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteMarker(marker.id);
+            } catch (error) {
+              Alert.alert('Метка не удалена', (error as Error).message);
+            }
+          },
+        },
+      ]);
+    },
+    [deleteMarker],
+  );
+
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
+      <MarkersMap
+        markers={markers}
+        onAddMarker={handleAddMarker}
+        onSelectMarker={handleSelectMarker}
+      />
+
+      <ThemedView
+        style={[
+          styles.panel,
+          { borderColor: theme.border, paddingBottom: insets.bottom + Spacing.three },
+        ]}>
+        <View style={styles.panelHeader}>
+          <ThemedText type="smallBold">
+            {markers.length === 0 ? 'Метки' : formatCount(markers.length, ['метка', 'метки', 'меток'])}
           </ThemedText>
-        </ThemedView>
+          <ThemedText type="small" themeColor="textSecondary">
+            Долгое нажатие на карте — новая метка
+          </ThemedText>
+        </View>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
+        <MarkerList
+          markers={markers}
+          imageCount={(markerId) => getMarkerImages(markerId).length}
+          onSelect={handleSelectMarker}
+          onDelete={handleDeleteMarker}
+        />
+      </ThemedView>
     </ThemedView>
   );
 }
@@ -64,35 +99,17 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
   },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
+  panel: {
+    maxHeight: '42%',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopLeftRadius: Radius.large,
+    borderTopRightRadius: Radius.large,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+    paddingTop: Spacing.three,
+    gap: Spacing.two,
+  },
+  panelHeader: {
+    gap: Spacing.half,
   },
 });

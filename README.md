@@ -1,56 +1,80 @@
-# Welcome to your Expo app 👋
+# psu-maps
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Мобильное приложение на Expo + React Native: карта, на которую пользователь ставит метки долгим
+нажатием, и галерея фотографий для каждой метки.
 
-## Get started
-
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Установка и запуск
 
 ```bash
-npm run reset-project
+npm install
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Дальше отсканируйте QR-код приложением **Expo Go** (Android/iOS). Нативные SDK и ключи Google Maps
+не нужны: `react-native-maps` входит в Expo Go для SDK 57.
 
-### Other setup steps
+Проверка типов:
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```bash
+npx tsc --noEmit
+```
 
-## Learn more
+## Возможности
 
-To learn more about developing your project with Expo, look at the following resources:
+- Полноэкранная карта (`react-native-maps`), стартовый регион — кампус ПГНИУ.
+- Долгое нажатие по карте создаёт метку; пины кликабельны и ведут на экран деталей.
+- Панель со списком меток: координаты, количество фото, удаление с подтверждением.
+- Экран метки: координаты, дата, сетка фотографий, добавление из галереи, удаление фото.
+- Просмотр фото на весь экран по нажатию.
+- Тёмная и светлая темы.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## Структура
 
-## Join the community
+```
+src/
+├── app/
+│   ├── _layout.tsx          Stack-навигация + провайдер состояния
+│   ├── index.tsx            экран карты
+│   └── marker/[id].tsx      экран деталей метки
+├── components/
+│   ├── markers-map.tsx      обёртка над MapView (+ .web.tsx заглушка)
+│   ├── marker-list.tsx      список меток
+│   ├── image-list.tsx       сетка изображений
+│   ├── action-button.tsx    кнопка
+│   └── route-error-boundary.tsx
+├── contexts/markers-context.tsx
+├── constants/theme.ts
+├── utils/format.ts
+└── types.ts
+```
 
-Join our community of developers creating universal apps.
+Имена файлов — kebab-case, как в остальном шаблоне Expo; это соответствует «примерной структуре»
+из задания (`Map.tsx` → `markers-map.tsx` и так далее).
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Решения при реализации
+
+- **Состояние в контексте.** `MarkersProvider` хранит метки и изображения и отдаёт асинхронный
+  API (`addMarker`, `deleteMarker`, `addImage`, `deleteImage`). Экраны не знают, где лежат данные,
+  поэтому хранилище можно заменить без правок в UI.
+- **Числовые id.** Идентификаторы меток и изображений — числа, как в схеме БД из следующего
+  задания.
+- **Типизация.** Все данные описаны в `src/types.ts`; параметры маршрута читаются через
+  `useLocalSearchParams<MarkerDetailsParams>()`, переходы — через типизированные маршруты
+  (`experiments.typedRoutes`).
+- **Разрешения.** Доступ к галерее запрашивается перед открытием пикера; если пользователь
+  отказал навсегда, приложение предлагает открыть системные настройки.
+
+## Обработка ошибок
+
+| Место | Что делает приложение |
+| --- | --- |
+| Выбор изображения | `try/catch` вокруг пикера, `Alert` с текстом ошибки, отдельная ветка для отказа в разрешении |
+| Навигация | id метки валидируется; несуществующая метка показывает экран «Метка не найдена» с кнопкой возврата, `router.back()` подстрахован `router.replace('/')` |
+| Загрузка карты | индикатор до `onMapReady`; если карта не поднялась за 12 секунд — экран с кнопкой «Повторить» |
+| Непредвиденные ошибки | каждый маршрут экспортирует `ErrorBoundary` с кнопкой повторного рендера |
+
+## Известные ограничения
+
+- Данные живут в памяти: после перезапуска приложения метки исчезают (локальная БД — следующее задание).
+- Веб-версия карту не показывает — `react-native-maps` работает только на Android и iOS.
+- URI фотографий ссылаются на галерею устройства; файлы в приложение не копируются.

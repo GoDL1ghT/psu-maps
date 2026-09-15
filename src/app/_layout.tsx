@@ -1,18 +1,24 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'react-native';
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
+import { MarkersProvider } from '@/contexts/markers-context';
 
-SplashScreen.preventAutoHideAsync();
+export { RouteErrorBoundary as ErrorBoundary } from '@/components/route-error-boundary';
 
-export default function TabLayout() {
+export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
+    <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
+      <MarkersProvider>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+        <Stack>
+          <Stack.Screen name="index" options={{ title: 'Карта меток' }} />
+          <Stack.Screen name="marker/[id]" options={{ title: 'Метка' }} />
+        </Stack>
+      </MarkersProvider>
     </ThemeProvider>
   );
 }
