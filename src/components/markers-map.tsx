@@ -1,6 +1,12 @@
+import { isRunningInExpoGo } from 'expo';
 import { Fragment, useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import MapView, { Circle, Marker as MarkerPin, type LongPressEvent } from 'react-native-maps';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
+import MapView, {
+  Circle,
+  Marker as MarkerPin,
+  UrlTile,
+  type LongPressEvent,
+} from 'react-native-maps';
 
 import { ActionButton } from '@/components/action-button';
 import { ThemedText } from '@/components/themed-text';
@@ -10,6 +16,12 @@ import { useTheme } from '@/hooks/use-theme';
 import type { Coordinate, Marker } from '@/types';
 
 const MAP_LOAD_TIMEOUT = 12_000;
+/**
+ * В Expo Go на Android базовая карта Google не грузится: Expo Go не может получить свой ключ
+ * Maps SDK, поверхность остаётся пустой. В development build базовая карта работает штатно.
+ */
+const USE_FALLBACK_TILES = Platform.OS === 'android' && isRunningInExpoGo();
+const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const PROXIMITY_STROKE = 'rgba(91, 69, 224, 0.35)';
 const PROXIMITY_FILL = 'rgba(91, 69, 224, 0.08)';
 const PROXIMITY_STROKE_ACTIVE = 'rgba(91, 69, 224, 0.9)';
@@ -70,14 +82,17 @@ export function MarkersMap({
     <View style={styles.container}>
       <MapView
         key={attempt}
-        style={StyleSheet.absoluteFill}
+        style={styles.map}
         initialRegion={InitialRegion}
         onLongPress={handleLongPress}
         onMapReady={() => setIsReady(true)}
         onMapLoaded={() => setIsReady(true)}
+        mapType={USE_FALLBACK_TILES ? 'none' : 'standard'}
         showsUserLocation={showUserLocation}
         showsMyLocationButton={showUserLocation}
         toolbarEnabled={false}>
+        {USE_FALLBACK_TILES && <UrlTile urlTemplate={OSM_TILE_URL} maximumZ={19} zIndex={-1} />}
+
         {markers.map((marker) => {
           const coordinate = { latitude: marker.latitude, longitude: marker.longitude };
           const isNearby = nearbyMarkerIds.includes(marker.id);
@@ -119,6 +134,10 @@ export function MarkersMap({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  map: {
+    width: '100%',
+    height: '100%',
   },
   loader: {
     position: 'absolute',

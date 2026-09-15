@@ -14,6 +14,23 @@ npx expo start
 Дальше отсканируйте QR-код приложением **Expo Go** (Android/iOS). Нативные SDK и ключи Google Maps
 не нужны: `react-native-maps` входит в Expo Go для SDK 57.
 
+### Ограничения Expo Go на Android
+
+Две вещи в Expo Go не работают — обе из-за самого Expo Go, а не из-за кода приложения:
+
+| Что | Почему | Что делает приложение |
+| --- | --- | --- |
+| Базовая карта Google пустая (виден только логотип) | Expo Go не может получить свой ключ Maps SDK: `Error requesting API token. StatusCode=INVALID_ARGUMENT` ([issue](https://github.com/react-native-maps/react-native-maps/issues/5888)) | подставляет тайлы OpenStreetMap через `UrlTile`, так что карта видна |
+| Не приходят уведомления | push-функциональность вырезана из Expo Go с SDK 53, и `expo-notifications` падает при импорте | грузит модуль лениво и показывает предупреждение в панели |
+
+Обе проблемы исчезают в development build, где используются штатные тайлы Google и настоящие
+уведомления:
+
+```bash
+npx expo run:android                                  # локально (нужен Android SDK)
+npx eas build --profile development --platform android  # или через EAS
+```
+
 Проверка типов и сборка бандла:
 
 ```bash
