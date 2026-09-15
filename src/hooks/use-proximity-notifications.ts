@@ -1,13 +1,9 @@
 import type * as Location from 'expo-location';
 import { useEffect, useMemo, useState } from 'react';
 
+import { PROXIMITY_EXIT_THRESHOLD, PROXIMITY_THRESHOLD } from '@/constants/proximity';
 import { calculateDistance } from '@/services/location';
-import {
-  NotificationManager,
-  PROXIMITY_EXIT_THRESHOLD,
-  PROXIMITY_THRESHOLD,
-  requestNotificationPermissions,
-} from '@/services/notifications';
+import { NotificationManager, requestNotificationPermissions } from '@/services/notifications';
 import type { Marker } from '@/types';
 
 /** Шлёт уведомление, когда пользователь входит в радиус метки, и снимает его при выходе. */

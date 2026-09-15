@@ -1,24 +1,45 @@
-import * as Notifications from 'expo-notifications';
+import { isRunningInExpoGo } from 'expo';
 import { Platform } from 'react-native';
 
 import type { Marker } from '@/types';
 import { formatDistance } from '@/utils/format';
 
-/** Радиус срабатывания уведомления, м. */
-export const PROXIMITY_THRESHOLD = 100;
-/** Выход из зоны считается по большему радиусу, чтобы уведомление не мигало на границе. */
-export const PROXIMITY_EXIT_THRESHOLD = 140;
+type NotificationsModule = typeof import('expo-notifications');
 
 const ANDROID_CHANNEL_ID = 'proximity';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+export const NOTIFICATIONS_UNAVAILABLE =
+  'Уведомления недоступны в Expo Go на Android. Соберите development build, чтобы их получать.';
+
+/**
+ * В Expo Go на Android сам импорт `expo-notifications` бросает исключение: модуль
+ * DevicePushTokenAutoRegistration регистрирует слушателя push-токена прямо при загрузке.
+ * Поэтому модуль подгружается лениво и только там, где он поддерживается.
+ */
+export function areNotificationsSupported(): boolean {
+  return !(Platform.OS === 'android' && isRunningInExpoGo());
+}
+
+let notifications: NotificationsModule | null = null;
+
+function loadNotifications(): NotificationsModule {
+  if (!areNotificationsSupported()) {
+    throw new Error(NOTIFICATIONS_UNAVAILABLE);
+  }
+  if (!notifications) {
+    const module = require('expo-notifications') as NotificationsModule;
+    module.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+    notifications = module;
+  }
+  return notifications;
+}
 
 export interface ActiveNotification {
   markerId: number;
@@ -27,6 +48,8 @@ export interface ActiveNotification {
 }
 
 export async function requestNotificationPermissions(): Promise<void> {
+  const Notifications = loadNotifications();
+
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
       name: 'Метки рядом',
@@ -67,6 +90,8 @@ export class NotificationManager {
     if (this.isActive(marker.id)) {
       return;
     }
+    const Notifications = loadNotifications();
+
     this.inFlight.add(marker.id);
     try {
       const notificationId = await Notifications.scheduleNotificationAsync({
@@ -94,6 +119,8 @@ export class NotificationManager {
       return;
     }
     this.activeNotifications.delete(markerId);
+
+    const Notifications = loadNotifications();
     // Уведомление уже показано, поэтому его нужно убрать из шторки, а не отменить расписание.
     await Notifications.dismissNotificationAsync(notification.notificationId);
     await Notifications.cancelScheduledNotificationAsync(notification.notificationId);

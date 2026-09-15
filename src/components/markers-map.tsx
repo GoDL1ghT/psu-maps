@@ -4,9 +4,9 @@ import MapView, { Circle, Marker as MarkerPin, type LongPressEvent } from 'react
 
 import { ActionButton } from '@/components/action-button';
 import { ThemedText } from '@/components/themed-text';
+import { PROXIMITY_THRESHOLD } from '@/constants/proximity';
 import { Colors, InitialRegion, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { PROXIMITY_THRESHOLD } from '@/services/notifications';
 import type { Coordinate, Marker } from '@/types';
 
 const MAP_LOAD_TIMEOUT = 12_000;
