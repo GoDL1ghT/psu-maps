@@ -3,17 +3,16 @@ import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import type { Marker } from '@/types';
+import type { MarkerSummary } from '@/types';
 import { formatCoordinate } from '@/utils/format';
 
 type MarkerListProps = {
-  markers: Marker[];
-  imageCount: (markerId: number) => number;
-  onSelect: (marker: Marker) => void;
-  onDelete: (marker: Marker) => void;
+  markers: MarkerSummary[];
+  onSelect: (marker: MarkerSummary) => void;
+  onDelete: (marker: MarkerSummary) => void;
 };
 
-export function MarkerList({ markers, imageCount, onSelect, onDelete }: MarkerListProps) {
+export function MarkerList({ markers, onSelect, onDelete }: MarkerListProps) {
   const theme = useTheme();
 
   if (markers.length === 0) {
@@ -50,7 +49,7 @@ export function MarkerList({ markers, imageCount, onSelect, onDelete }: MarkerLi
           <View style={styles.rowText}>
             <ThemedText type="smallBold">{formatCoordinate(item.latitude, item.longitude)}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              {imageCount(item.id)} фото
+              {item.imageCount} фото
             </ThemedText>
           </View>
 

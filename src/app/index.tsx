@@ -1,14 +1,15 @@
 import { useRouter } from 'expo-router';
 import { useCallback } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ActionButton } from '@/components/action-button';
 import { MarkerList } from '@/components/marker-list';
 import { MarkersMap } from '@/components/markers-map';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Radius, Spacing } from '@/constants/theme';
-import { useMarkers } from '@/contexts/markers-context';
+import { useDatabase } from '@/contexts/database-context';
 import { useTheme } from '@/hooks/use-theme';
 import type { Coordinate, Marker } from '@/types';
 import { formatCount } from '@/utils/format';
@@ -19,14 +20,14 @@ export default function MapScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { markers, addMarker, deleteMarker, getMarkerImages } = useMarkers();
+  const { markers, addMarker, deleteMarker, isLoading, error, retry } = useDatabase();
 
   const handleAddMarker = useCallback(
     async ({ latitude, longitude }: Coordinate) => {
       try {
         await addMarker(latitude, longitude);
-      } catch (error) {
-        Alert.alert('Метка не добавлена', (error as Error).message);
+      } catch (cause) {
+        Alert.alert('Метка не добавлена', (cause as Error).message);
       }
     },
     [addMarker],
@@ -53,8 +54,8 @@ export default function MapScreen() {
           onPress: async () => {
             try {
               await deleteMarker(marker.id);
-            } catch (error) {
-              Alert.alert('Метка не удалена', (error as Error).message);
+            } catch (cause) {
+              Alert.alert('Метка не удалена', (cause as Error).message);
             }
           },
         },
@@ -62,6 +63,27 @@ export default function MapScreen() {
     },
     [deleteMarker],
   );
+
+  if (error) {
+    return (
+      <ThemedView style={styles.centered}>
+        <ThemedText type="subtitle">База данных недоступна</ThemedText>
+        <ThemedText themeColor="textSecondary" style={styles.centeredText}>
+          {error.message}
+        </ThemedText>
+        <ActionButton label="Повторить" onPress={retry} />
+      </ThemedView>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <ThemedView style={styles.centered}>
+        <ActivityIndicator color={theme.accent} />
+        <ThemedText themeColor="textSecondary">Открываем базу меток…</ThemedText>
+      </ThemedView>
+    );
+  }
 
   return (
     <ThemedView style={styles.container}>
@@ -85,12 +107,7 @@ export default function MapScreen() {
           </ThemedText>
         </View>
 
-        <MarkerList
-          markers={markers}
-          imageCount={(markerId) => getMarkerImages(markerId).length}
-          onSelect={handleSelectMarker}
-          onDelete={handleDeleteMarker}
-        />
+        <MarkerList markers={markers} onSelect={handleSelectMarker} onDelete={handleDeleteMarker} />
       </ThemedView>
     </ThemedView>
   );
@@ -99,6 +116,16 @@ export default function MapScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.four,
+    gap: Spacing.three,
+  },
+  centeredText: {
+    textAlign: 'center',
   },
   panel: {
     maxHeight: '42%',

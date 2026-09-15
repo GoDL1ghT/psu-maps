@@ -1,7 +1,16 @@
 import * as ImagePicker from 'expo-image-picker';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,7 +19,8 @@ import { ImageList } from '@/components/image-list';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Radius, Spacing } from '@/constants/theme';
-import { useMarkers } from '@/contexts/markers-context';
+import { useDatabase } from '@/contexts/database-context';
+import { useMarkerDetails } from '@/hooks/use-marker-details';
 import { useTheme } from '@/hooks/use-theme';
 import type { MarkerDetailsParams, MarkerImage } from '@/types';
 import { formatCoordinate, formatDate } from '@/utils/format';
@@ -22,13 +32,12 @@ export default function MarkerDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<MarkerDetailsParams>();
-  const { getMarker, getMarkerImages, addImage, deleteImage } = useMarkers();
+  const { addImages, deleteImage } = useDatabase();
+  const markerId = Number(id);
+  const { marker, images, isLoading, error, reload } = useMarkerDetails(markerId);
   const [permission, requestPermission] = ImagePicker.useMediaLibraryPermissions();
   const [isPicking, setIsPicking] = useState(false);
   const [preview, setPreview] = useState<MarkerImage | null>(null);
-
-  const markerId = Number(id);
-  const marker = Number.isInteger(markerId) ? getMarker(markerId) : undefined;
 
   const goBack = useCallback(() => {
     if (router.canGoBack()) {
@@ -75,15 +84,17 @@ export default function MarkerDetailsScreen() {
       if (result.canceled) {
         return;
       }
-      for (const asset of result.assets) {
-        await addImage(marker.id, asset.uri);
-      }
-    } catch (error) {
-      Alert.alert('Не удалось добавить фото', (error as Error).message);
+      await addImages(
+        marker.id,
+        result.assets.map((asset) => asset.uri),
+      );
+      await reload();
+    } catch (cause) {
+      Alert.alert('Не удалось добавить фото', (cause as Error).message);
     } finally {
       setIsPicking(false);
     }
-  }, [marker, ensurePermission, addImage]);
+  }, [marker, ensurePermission, addImages, reload]);
 
   const handleDeleteImage = useCallback(
     (image: MarkerImage) => {
@@ -95,32 +106,53 @@ export default function MarkerDetailsScreen() {
           onPress: async () => {
             try {
               await deleteImage(image.id);
-            } catch (error) {
-              Alert.alert('Фото не удалено', (error as Error).message);
+              await reload();
+            } catch (cause) {
+              Alert.alert('Фото не удалено', (cause as Error).message);
             }
           },
         },
       ]);
     },
-    [deleteImage],
+    [deleteImage, reload],
   );
 
-  if (!marker) {
+  if (isLoading) {
     return (
-      <ThemedView style={styles.container}>
-        <Stack.Screen options={{ title: 'Метка не найдена' }} />
-        <View style={styles.missing}>
-          <ThemedText type="subtitle">Метка не найдена</ThemedText>
-          <ThemedText themeColor="textSecondary" style={styles.missingText}>
-            Возможно, её удалили. Вернитесь к карте и выберите другую.
-          </ThemedText>
-          <ActionButton label="К карте" onPress={goBack} />
-        </View>
+      <ThemedView style={styles.centered}>
+        <Stack.Screen options={{ title: 'Метка' }} />
+        <ActivityIndicator color={theme.accent} />
+        <ThemedText themeColor="textSecondary">Загружаем метку…</ThemedText>
       </ThemedView>
     );
   }
 
-  const images = getMarkerImages(marker.id);
+  if (error) {
+    return (
+      <ThemedView style={styles.centered}>
+        <Stack.Screen options={{ title: 'Ошибка' }} />
+        <ThemedText type="subtitle">Не удалось прочитать метку</ThemedText>
+        <ThemedText themeColor="textSecondary" style={styles.centeredText}>
+          {error.message}
+        </ThemedText>
+        <ActionButton label="Повторить" onPress={reload} />
+        <ActionButton label="К карте" variant="secondary" onPress={goBack} />
+      </ThemedView>
+    );
+  }
+
+  if (!marker) {
+    return (
+      <ThemedView style={styles.centered}>
+        <Stack.Screen options={{ title: 'Метка не найдена' }} />
+        <ThemedText type="subtitle">Метка не найдена</ThemedText>
+        <ThemedText themeColor="textSecondary" style={styles.centeredText}>
+          Возможно, её удалили. Вернитесь к карте и выберите другую.
+        </ThemedText>
+        <ActionButton label="К карте" onPress={goBack} />
+      </ThemedView>
+    );
+  }
 
   return (
     <ThemedView style={styles.container}>
@@ -189,14 +221,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingTop: Spacing.three,
   },
-  missing: {
+  centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: Spacing.four,
     gap: Spacing.three,
   },
-  missingText: {
+  centeredText: {
     textAlign: 'center',
   },
   backdrop: {

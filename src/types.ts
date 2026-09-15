@@ -5,6 +5,11 @@ export interface Marker {
   createdAt: string;
 }
 
+/** Метка вместе с числом привязанных фотографий — для списка и карты. */
+export interface MarkerSummary extends Marker {
+  imageCount: number;
+}
+
 export interface MarkerImage {
   id: number;
   markerId: number;
