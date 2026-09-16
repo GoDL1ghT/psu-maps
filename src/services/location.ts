@@ -1,5 +1,9 @@
 import * as Location from 'expo-location';
 
+import { createLogger } from '@/logger';
+
+const logGeo = createLogger('geo');
+
 export interface LocationConfig {
   accuracy: Location.Accuracy;
   /** Как часто обновлять местоположение, мс (только Android). */
@@ -35,11 +39,13 @@ export function calculateDistance(
 
 export async function requestLocationPermissions(): Promise<void> {
   const servicesEnabled = await Location.hasServicesEnabledAsync();
+  logGeo('службы геолокации', servicesEnabled ? 'включены' : 'выключены');
   if (!servicesEnabled) {
     throw new Error('Службы геолокации выключены. Включите их в настройках устройства.');
   }
 
   const { status, canAskAgain } = await Location.requestForegroundPermissionsAsync();
+  logGeo('разрешение', status, `повторный запрос возможен: ${canAskAgain}`);
   if (status !== 'granted') {
     throw new Error(
       canAskAgain
@@ -53,9 +59,24 @@ export async function startLocationUpdates(
   onLocation: (location: Location.LocationObject) => void,
   onError?: (message: string) => void,
 ): Promise<Location.LocationSubscription> {
-  return Location.watchPositionAsync(LOCATION_CONFIG, onLocation, onError);
+  logGeo('старт слежения', LOCATION_CONFIG);
+
+  return Location.watchPositionAsync(
+    LOCATION_CONFIG,
+    (location) => {
+      const { latitude, longitude, accuracy } = location.coords;
+      logGeo('позиция', `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`, `±${accuracy ?? '?'} м`);
+      onLocation(location);
+    },
+    (reason) => {
+      logGeo('ошибка слежения', reason);
+      onError?.(reason);
+    },
+  );
 }
 
 export async function getInitialLocation(): Promise<Location.LocationObject | null> {
-  return Location.getLastKnownPositionAsync();
+  const lastKnown = await Location.getLastKnownPositionAsync();
+  logGeo('последняя известная позиция', lastKnown ? lastKnown.coords : 'отсутствует');
+  return lastKnown;
 }

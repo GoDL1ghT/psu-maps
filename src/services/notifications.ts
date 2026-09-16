@@ -1,12 +1,15 @@
 import { isRunningInExpoGo } from 'expo';
 import { Platform } from 'react-native';
 
+import { createLogger } from '@/logger';
 import type { Marker } from '@/types';
 import { formatDistance } from '@/utils/format';
 
 type NotificationsModule = typeof import('expo-notifications');
 
 const ANDROID_CHANNEL_ID = 'proximity';
+
+const logNotify = createLogger('notify');
 
 export const NOTIFICATIONS_UNAVAILABLE =
   'Уведомления недоступны в Expo Go на Android. Соберите development build, чтобы их получать.';
@@ -24,6 +27,7 @@ let notifications: NotificationsModule | null = null;
 
 function loadNotifications(): NotificationsModule {
   if (!areNotificationsSupported()) {
+    logNotify('недоступны', NOTIFICATIONS_UNAVAILABLE);
     throw new Error(NOTIFICATIONS_UNAVAILABLE);
   }
   if (!notifications) {
@@ -37,6 +41,7 @@ function loadNotifications(): NotificationsModule {
       }),
     });
     notifications = module;
+    logNotify('модуль expo-notifications загружен');
   }
   return notifications;
 }
@@ -59,12 +64,14 @@ export async function requestNotificationPermissions(): Promise<void> {
 
   const current = await Notifications.getPermissionsAsync();
   if (current.granted) {
+    logNotify('разрешение уже выдано');
     return;
   }
 
   const requested = await Notifications.requestPermissionsAsync({
     ios: { allowAlert: true, allowBadge: false, allowSound: false },
   });
+  logNotify('разрешение запрошено', requested.granted ? 'выдано' : 'отклонено');
   if (!requested.granted) {
     throw new Error('Уведомления отключены. Разрешите их в настройках, чтобы получать подсказки о метках.');
   }
@@ -108,6 +115,7 @@ export class NotificationManager {
         notificationId,
         timestamp: Date.now(),
       });
+      logNotify('показано', `метка №${marker.id}`, formatDistance(distance));
     } finally {
       this.inFlight.delete(marker.id);
     }
@@ -119,6 +127,7 @@ export class NotificationManager {
       return;
     }
     this.activeNotifications.delete(markerId);
+    logNotify('снято', `метка №${markerId}`);
 
     const Notifications = loadNotifications();
     // Уведомление уже показано, поэтому его нужно убрать из шторки, а не отменить расписание.

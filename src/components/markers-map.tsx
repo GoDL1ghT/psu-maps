@@ -1,31 +1,100 @@
-import { isRunningInExpoGo } from 'expo';
-import { Fragment, useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
-import MapView, {
-  Circle,
-  Marker as MarkerPin,
-  UrlTile,
-  type LongPressEvent,
-} from 'react-native-maps';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { ActionButton } from '@/components/action-button';
 import { ThemedText } from '@/components/themed-text';
 import { PROXIMITY_THRESHOLD } from '@/constants/proximity';
-import { Colors, InitialRegion, Spacing } from '@/constants/theme';
+import { createLogger } from '@/logger';
+import { InitialRegion, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { Coordinate, Marker } from '@/types';
 
+const logMap = createLogger('map');
+
 const MAP_LOAD_TIMEOUT = 12_000;
-/**
- * В Expo Go на Android базовая карта Google не грузится: Expo Go не может получить свой ключ
- * Maps SDK, поверхность остаётся пустой. В development build базовая карта работает штатно.
- */
-const USE_FALLBACK_TILES = Platform.OS === 'android' && isRunningInExpoGo();
-const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-const PROXIMITY_STROKE = 'rgba(91, 69, 224, 0.35)';
-const PROXIMITY_FILL = 'rgba(91, 69, 224, 0.08)';
-const PROXIMITY_STROKE_ACTIVE = 'rgba(91, 69, 224, 0.9)';
-const PROXIMITY_FILL_ACTIVE = 'rgba(91, 69, 224, 0.22)';
+const LEAFLET_VERSION = '1.9.4';
+const INITIAL_ZOOM = 15;
+
+const MAP_HTML = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/${LEAFLET_VERSION}/leaflet.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/${LEAFLET_VERSION}/leaflet.js"></script>
+<style>
+  html, body, #map { margin: 0; height: 100%; background: #e9e5de; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+  var send = function (payload) {
+    window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+  };
+
+  window.onerror = function (message, source, line) {
+    send({ type: 'log', text: 'ошибка: ' + message + ' (строка ' + line + ')' });
+    return false;
+  };
+
+  if (!window.L) {
+    send({ type: 'log', text: 'Leaflet не загрузился с CDN' });
+  }
+
+  var map = L.map('map').setView([${InitialRegion.latitude}, ${InitialRegion.longitude}], ${INITIAL_ZOOM});
+
+  var tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap',
+  });
+
+  tiles.on('tileerror', function (event) {
+    send({ type: 'log', text: 'тайл не загрузился: ' + (event.tile ? event.tile.src : '?') });
+  });
+  tiles.on('load', function () {
+    send({ type: 'log', text: 'тайлы отрисованы' });
+  });
+  tiles.addTo(map);
+
+  map.whenReady(function () { send({ type: 'ready' }); });
+  map.on('contextmenu', function (event) {
+    send({ type: 'add', latitude: event.latlng.lat, longitude: event.latlng.lng });
+  });
+
+  var layer = L.layerGroup().addTo(map);
+  var userLayer = L.layerGroup().addTo(map);
+
+  window.setUser = function (latitude, longitude) {
+    userLayer.clearLayers();
+    if (latitude === null) { return; }
+    L.circleMarker([latitude, longitude], {
+      radius: 7, color: '#ffffff', weight: 3,
+      fillColor: '#1a73e8', fillOpacity: 1,
+    }).addTo(userLayer);
+  };
+
+  window.setMarkers = function (markers, showCircles) {
+    layer.clearLayers();
+    markers.forEach(function (item) {
+      if (showCircles) {
+        L.circle([item.latitude, item.longitude], {
+          radius: ${PROXIMITY_THRESHOLD},
+          color: item.isNearby ? 'rgba(91, 69, 224, 0.9)' : 'rgba(91, 69, 224, 0.35)',
+          fillColor: 'rgba(91, 69, 224, 0.15)',
+          weight: 1,
+        }).addTo(layer);
+      }
+      L.marker([item.latitude, item.longitude])
+        .addTo(layer)
+        .bindTooltip('Метка №' + item.id)
+        .on('click', function () { send({ type: 'select', id: item.id }); });
+    });
+  };
+</script>
+</body>
+</html>`;
 
 type MarkersMapProps = {
   markers: Marker[];
@@ -33,6 +102,7 @@ type MarkersMapProps = {
   onSelectMarker: (marker: Marker) => void;
   showUserLocation?: boolean;
   nearbyMarkerIds?: number[];
+  userLocation?: Coordinate | null;
 };
 
 export function MarkersMap({
@@ -41,29 +111,88 @@ export function MarkersMap({
   onSelectMarker,
   showUserLocation = false,
   nearbyMarkerIds = [],
+  userLocation = null,
 }: MarkersMapProps) {
   const theme = useTheme();
+  const webViewRef = useRef<WebView>(null);
   const [attempt, setAttempt] = useState(0);
   const [isReady, setIsReady] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
+
+  const payload = useMemo(
+    () =>
+      JSON.stringify(
+        markers.map((marker) => ({
+          id: marker.id,
+          latitude: marker.latitude,
+          longitude: marker.longitude,
+          isNearby: nearbyMarkerIds.includes(marker.id),
+        })),
+      ),
+    [markers, nearbyMarkerIds],
+  );
 
   useEffect(() => {
     if (isReady) {
       return;
     }
-    const timer = setTimeout(() => setTimedOut(true), MAP_LOAD_TIMEOUT);
+    const timer = setTimeout(() => {
+      logMap('таймаут загрузки', `${MAP_LOAD_TIMEOUT} мс`);
+      setTimedOut(true);
+    }, MAP_LOAD_TIMEOUT);
     return () => clearTimeout(timer);
   }, [isReady, attempt]);
 
+  useEffect(() => {
+    if (!isReady) {
+      return;
+    }
+    logMap('меток отправлено в карту', markers.length);
+    webViewRef.current?.injectJavaScript(
+      `window.setMarkers(${payload}, ${showUserLocation}); true;`,
+    );
+  }, [isReady, payload, showUserLocation, markers.length]);
+
+  useEffect(() => {
+    if (!isReady) {
+      return;
+    }
+    const latitude = userLocation?.latitude ?? null;
+    const longitude = userLocation?.longitude ?? null;
+    webViewRef.current?.injectJavaScript(`window.setUser(${latitude}, ${longitude}); true;`);
+  }, [isReady, userLocation]);
+
   const retry = () => {
+    logMap('повторная загрузка');
     setTimedOut(false);
     setIsReady(false);
     setAttempt((current) => current + 1);
   };
 
-  const handleLongPress = (event: LongPressEvent) => {
-    const { latitude, longitude } = event.nativeEvent.coordinate;
-    onAddMarker({ latitude, longitude });
+  const handleMessage = (event: WebViewMessageEvent) => {
+    const message = JSON.parse(event.nativeEvent.data);
+
+    if (message.type === 'log') {
+      logMap('webview', message.text);
+      return;
+    }
+    if (message.type === 'ready') {
+      logMap('карта готова');
+      setIsReady(true);
+      return;
+    }
+    if (message.type === 'add') {
+      logMap('долгое нажатие', `${message.latitude.toFixed(5)}, ${message.longitude.toFixed(5)}`);
+      onAddMarker({ latitude: message.latitude, longitude: message.longitude });
+      return;
+    }
+    if (message.type === 'select') {
+      logMap('нажата метка', `№${message.id}`);
+      const selected = markers.find((marker) => marker.id === message.id);
+      if (selected) {
+        onSelectMarker(selected);
+      }
+    }
   };
 
   if (timedOut) {
@@ -80,46 +209,16 @@ export function MarkersMap({
 
   return (
     <View style={styles.container}>
-      <MapView
+      <WebView
         key={attempt}
+        ref={webViewRef}
         style={styles.map}
-        initialRegion={InitialRegion}
-        onLongPress={handleLongPress}
-        onMapReady={() => setIsReady(true)}
-        onMapLoaded={() => setIsReady(true)}
-        mapType={USE_FALLBACK_TILES ? 'none' : 'standard'}
-        showsUserLocation={showUserLocation}
-        showsMyLocationButton={showUserLocation}
-        toolbarEnabled={false}>
-        {USE_FALLBACK_TILES && <UrlTile urlTemplate={OSM_TILE_URL} maximumZ={19} zIndex={-1} />}
-
-        {markers.map((marker) => {
-          const coordinate = { latitude: marker.latitude, longitude: marker.longitude };
-          const isNearby = nearbyMarkerIds.includes(marker.id);
-
-          return (
-            <Fragment key={marker.id}>
-              {showUserLocation && (
-                <Circle
-                  center={coordinate}
-                  radius={PROXIMITY_THRESHOLD}
-                  strokeColor={isNearby ? PROXIMITY_STROKE_ACTIVE : PROXIMITY_STROKE}
-                  fillColor={isNearby ? PROXIMITY_FILL_ACTIVE : PROXIMITY_FILL}
-                />
-              )}
-              <MarkerPin
-                identifier={String(marker.id)}
-                coordinate={coordinate}
-                pinColor={Colors.light.accent}
-                title={`Метка №${marker.id}`}
-                description={isNearby ? 'Вы рядом' : 'Нажмите, чтобы открыть'}
-                onCalloutPress={() => onSelectMarker(marker)}
-                onPress={() => onSelectMarker(marker)}
-              />
-            </Fragment>
-          );
-        })}
-      </MapView>
+        source={{ html: MAP_HTML }}
+        originWhitelist={['*']}
+        onMessage={handleMessage}
+        javaScriptEnabled
+        domStorageEnabled
+      />
 
       {!isReady && (
         <View style={[styles.loader, { backgroundColor: theme.background }]}>
@@ -136,8 +235,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   map: {
-    width: '100%',
-    height: '100%',
+    flex: 1,
+    backgroundColor: 'transparent',
   },
   loader: {
     position: 'absolute',

@@ -106,6 +106,7 @@ export default function MapScreen() {
         onSelectMarker={handleSelectMarker}
         showUserLocation={isTracking}
         nearbyMarkerIds={nearbyMarkerIds}
+        userLocation={location?.coords ?? null}
       />
 
       <ThemedView

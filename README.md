@@ -8,26 +8,41 @@
 
 ```bash
 npm install
-npx expo start
+npm start
 ```
 
-Дальше отсканируйте QR-код приложением **Expo Go** (Android/iOS). Нативные SDK и ключи Google Maps
-не нужны: `react-native-maps` входит в Expo Go для SDK 57.
+Отсканируйте QR-код приложением **Expo Go** (Android/iOS). Ключи и нативная сборка не нужны.
 
-### Ограничения Expo Go на Android
+`npm start` поднимает Metro через туннель ngrok: телефон подключается по внешнему адресу,
+а не по локальному IP. Это нужно, когда устройства в VPN, в разных сетях или роутер
+изолирует клиентов. В обычной локальной сети быстрее `npm run start:lan`.
 
-Две вещи в Expo Go не работают — обе из-за самого Expo Go, а не из-за кода приложения:
+## Как устроена карта
 
-| Что | Почему | Что делает приложение |
-| --- | --- | --- |
-| Базовая карта Google пустая (виден только логотип) | Expo Go не может получить свой ключ Maps SDK: `Error requesting API token. StatusCode=INVALID_ARGUMENT` ([issue](https://github.com/react-native-maps/react-native-maps/issues/5888)) | подставляет тайлы OpenStreetMap через `UrlTile`, так что карта видна |
-| Не приходят уведомления | push-функциональность вырезана из Expo Go с SDK 53, и `expo-notifications` падает при импорте | грузит модуль лениво и показывает предупреждение в панели |
+Карта — это Leaflet внутри `react-native-webview` с растровыми тайлами OpenStreetMap.
+Долгое нажатие по карте создаёт метку, нажатие на пин открывает экран детали.
 
-Обе проблемы исчезают в development build, где используются штатные тайлы Google и настоящие
-уведомления:
+Нативный `react-native-maps` не используется сознательно. На Android он работает только через
+Google Maps, а тот требует ключа Google Cloud с привязанным платёжным аккаунтом. В Expo Go
+его поверхность отрисовки не инициализируется вовсе (`Error requesting API token.
+StatusCode=INVALID_ARGUMENT`, [issue](https://github.com/react-native-maps/react-native-maps/issues/5888)):
+карта остаётся чёрной, и на ней не видно даже меток, поэтому подмена тайлов через `UrlTile`
+там тоже не помогает. Leaflet обходит обе проблемы: ключей нет, в Expo Go работает.
+
+Если позже понадобится нативная карта с жестами без моста — берите
+[`@maplibre/maplibre-react-native`](https://github.com/maplibre/maplibre-react-native): он тоже
+работает без ключей на тайлах OSM, но требует development build.
+
+### Ограничения Expo Go
+
+| Что | Почему |
+| --- | --- |
+| Не приходят уведомления | push-функциональность вырезана из Expo Go с SDK 53, и `expo-notifications` падает при импорте |
+
+Исчезает в development build:
 
 ```bash
-npx expo run:android                                  # локально (нужен Android SDK)
+npx expo run:android                                    # локально (нужен Android SDK)
 npx eas build --profile development --platform android  # или через EAS
 ```
 
