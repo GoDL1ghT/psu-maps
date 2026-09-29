@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { ActionButton } from '@/components/action-button';
 import { ThemedText } from '@/components/themed-text';
 import { PROXIMITY_THRESHOLD } from '@/constants/proximity';
 import { createLogger } from '@/logger';
-import { InitialRegion, Spacing } from '@/constants/theme';
+import { InitialRegion, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { Coordinate, Marker } from '@/types';
 
@@ -66,13 +66,26 @@ const MAP_HTML = `<!doctype html>
   var layer = L.layerGroup().addTo(map);
   var userLayer = L.layerGroup().addTo(map);
 
+  var lastUser = null;
+  var centeredOnUser = false;
+
   window.setUser = function (latitude, longitude) {
     userLayer.clearLayers();
-    if (latitude === null) { return; }
-    L.circleMarker([latitude, longitude], {
+    if (latitude === null) { lastUser = null; return; }
+    lastUser = [latitude, longitude];
+    L.circleMarker(lastUser, {
       radius: 7, color: '#ffffff', weight: 3,
       fillColor: '#1a73e8', fillOpacity: 1,
     }).addTo(userLayer);
+    // первую позицию показываем сразу, дальше карту двигает только пользователь
+    if (!centeredOnUser) {
+      centeredOnUser = true;
+      map.setView(lastUser, map.getZoom());
+    }
+  };
+
+  window.focusUser = function () {
+    if (lastUser) { map.setView(lastUser, map.getZoom()); }
   };
 
   window.setMarkers = function (markers, showCircles) {
@@ -162,6 +175,10 @@ export function MarkersMap({
     webViewRef.current?.injectJavaScript(`window.setUser(${latitude}, ${longitude}); true;`);
   }, [isReady, userLocation]);
 
+  const focusUser = () => {
+    webViewRef.current?.injectJavaScript('window.focusUser(); true;');
+  };
+
   const retry = () => {
     logMap('повторная загрузка');
     setTimedOut(false);
@@ -220,6 +237,18 @@ export function MarkersMap({
         domStorageEnabled
       />
 
+      {isReady && userLocation && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Показать моё местоположение"
+          onPress={focusUser}
+          style={[styles.focusButton, { backgroundColor: theme.background, borderColor: theme.border }]}>
+          <ThemedText type="smallBold" style={{ color: theme.accent }}>
+            Я здесь
+          </ThemedText>
+        </Pressable>
+      )}
+
       {!isReady && (
         <View style={[styles.loader, { backgroundColor: theme.background }]}>
           <ActivityIndicator color={theme.accent} />
@@ -237,6 +266,15 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
     backgroundColor: 'transparent',
+  },
+  focusButton: {
+    position: 'absolute',
+    right: Spacing.three,
+    bottom: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.small,
   },
   loader: {
     position: 'absolute',

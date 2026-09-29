@@ -44,8 +44,14 @@ export async function requestLocationPermissions(): Promise<void> {
     throw new Error('Службы геолокации выключены. Включите их в настройках устройства.');
   }
 
+  const current = await Location.getForegroundPermissionsAsync();
+  if (current.granted) {
+    logGeo('разрешение уже выдано');
+    return;
+  }
+
   const { status, canAskAgain } = await Location.requestForegroundPermissionsAsync();
-  logGeo('разрешение', status, `повторный запрос возможен: ${canAskAgain}`);
+  logGeo('разрешение запрошено', status, `повторный запрос возможен: ${canAskAgain}`);
   if (status !== 'granted') {
     throw new Error(
       canAskAgain
